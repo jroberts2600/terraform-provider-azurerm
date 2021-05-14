@@ -575,7 +575,7 @@ func TestAccVirtualMachineScaleSet_multipleAssignedMSI(t *testing.T) {
 			Config: r.multipleAssignedMSI(data),
 			Check: resource.ComposeTestCheckFunc(
 				check.That(data.ResourceName).ExistsInAzure(r),
-				check.That(data.ResourceName).Key("identity.0.type").HasValue("SystemAssigned"),
+				check.That(data.ResourceName).Key("identity.0.type").HasValue("SystemAssigned, UserAssigned"),
 				check.That(data.ResourceName).Key("identity.0.identity_ids.#").HasValue("1"),
 				resource.TestMatchResourceAttr(data.ResourceName, "identity.0.principal_id", validate.UUIDRegExp),
 			),
@@ -804,7 +804,9 @@ func (VirtualMachineScaleSetResource) Destroy(ctx context.Context, client *clien
 		return nil, err
 	}
 
-	future, err := client.Compute.VMScaleSetClient.Delete(ctx, id.ResourceGroup, id.Name)
+	// this is a preview feature we don't want to use right now
+	var forceDelete *bool = nil
+	future, err := client.Compute.VMScaleSetClient.Delete(ctx, id.ResourceGroup, id.Name, forceDelete)
 	if err != nil {
 		return nil, fmt.Errorf("Bad: deleting %s: %+v", *id, err)
 	}

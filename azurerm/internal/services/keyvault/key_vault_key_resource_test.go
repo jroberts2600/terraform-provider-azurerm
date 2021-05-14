@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/services/keyvault/2016-10-01/keyvault"
+	"github.com/Azure/azure-sdk-for-go/services/keyvault/v7.1/keyvault"
 	"github.com/Azure/go-autorest/autorest/date"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/terraform"
@@ -74,6 +74,21 @@ func TestAccKeyVaultKey_curveEC(t *testing.T) {
 	data.ResourceTest(t, r, []resource.TestStep{
 		{
 			Config: r.curveEC(data),
+			Check: resource.ComposeTestCheckFunc(
+				check.That(data.ResourceName).ExistsInAzure(r),
+			),
+		},
+		data.ImportStep(),
+	})
+}
+
+func TestAccKeyVaultKey_curveECDeprecated(t *testing.T) {
+	data := acceptance.BuildTestData(t, "azurerm_key_vault_key", "test")
+	r := KeyVaultKeyResource{}
+
+	data.ResourceTest(t, r, []resource.TestStep{
+		{
+			Config: r.curveECDeprecated(data),
 			Check: resource.ComposeTestCheckFunc(
 				check.That(data.ResourceName).ExistsInAzure(r),
 			),
@@ -262,6 +277,24 @@ func TestAccKeyVaultKey_withExternalAccessPolicy(t *testing.T) {
 			),
 		},
 		data.ImportStep("key_size"),
+	})
+}
+
+func TestAccKeyVaultKey_purge(t *testing.T) {
+	data := acceptance.BuildTestData(t, "azurerm_key_vault_key", "test")
+	r := KeyVaultKeyResource{}
+
+	data.ResourceTest(t, r, []resource.TestStep{
+		{
+			Config: r.basicEC(data),
+			Check: resource.ComposeTestCheckFunc(
+				check.That(data.ResourceName).ExistsInAzure(r),
+			),
+		},
+		{
+			Config:  r.basicEC(data),
+			Destroy: true,
+		},
 	})
 }
 
@@ -557,6 +590,28 @@ resource "azurerm_key_vault_key" "test" {
 `, r.templateStandard(data), data.RandomString)
 }
 
+func (r KeyVaultKeyResource) curveECDeprecated(data acceptance.TestData) string {
+	return fmt.Sprintf(`
+provider "azurerm" {
+  features {}
+}
+
+%s
+
+resource "azurerm_key_vault_key" "test" {
+  name         = "key-%s"
+  key_vault_id = azurerm_key_vault.test.id
+  key_type     = "EC"
+  curve        = "SECP256K1"
+
+  key_opts = [
+    "sign",
+    "verify",
+  ]
+}
+`, r.templateStandard(data), data.RandomString)
+}
+
 func (r KeyVaultKeyResource) basicECHSM(data acceptance.TestData) string {
 	return fmt.Sprintf(`
 provider "azurerm" {
@@ -636,7 +691,6 @@ resource "azurerm_key_vault" "test" {
   resource_group_name        = azurerm_resource_group.test.name
   tenant_id                  = data.azurerm_client_config.current.tenant_id
   sku_name                   = "standard"
-  soft_delete_enabled        = true
   soft_delete_retention_days = 7
 
   tags = {
@@ -650,18 +704,18 @@ resource "azurerm_key_vault_access_policy" "test" {
   object_id    = data.azurerm_client_config.current.object_id
 
   key_permissions = [
-    "create",
-    "delete",
-    "get",
-    "purge",
-    "recover",
-    "update",
+    "Create",
+    "Delete",
+    "Get",
+    "Purge",
+    "Recover",
+    "Update",
   ]
 
   secret_permissions = [
-    "get",
-    "delete",
-    "set",
+    "Delete",
+    "Get",
+    "Set",
   ]
 }
 
@@ -701,7 +755,6 @@ resource "azurerm_key_vault" "test" {
   resource_group_name        = azurerm_resource_group.test.name
   tenant_id                  = data.azurerm_client_config.current.tenant_id
   sku_name                   = "standard"
-  soft_delete_enabled        = true
   soft_delete_retention_days = 7
 
   tags = {
@@ -715,19 +768,19 @@ resource "azurerm_key_vault_access_policy" "test" {
   object_id    = data.azurerm_client_config.current.object_id
 
   key_permissions = [
-    "create",
-    "delete",
-    "encrypt",
-    "get",
-    "purge",
-    "recover",
-    "update",
+    "Create",
+    "Delete",
+    "Encrypt",
+    "Get",
+    "Purge",
+    "Recover",
+    "Update",
   ]
 
   secret_permissions = [
-    "get",
-    "delete",
-    "set",
+    "Delete",
+    "Get",
+    "Set",
   ]
 }
 
@@ -770,7 +823,6 @@ resource "azurerm_key_vault" "test" {
   resource_group_name        = azurerm_resource_group.test.name
   tenant_id                  = data.azurerm_client_config.current.tenant_id
   sku_name                   = "%s"
-  soft_delete_enabled        = true
   soft_delete_retention_days = 7
 
   access_policy {
@@ -778,18 +830,18 @@ resource "azurerm_key_vault" "test" {
     object_id = data.azurerm_client_config.current.object_id
 
     key_permissions = [
-      "create",
-      "delete",
-      "get",
-      "purge",
-      "recover",
-      "update",
+      "Create",
+      "Delete",
+      "Get",
+      "Purge",
+      "Recover",
+      "Update",
     ]
 
     secret_permissions = [
-      "get",
-      "delete",
-      "set",
+      "Delete",
+      "Get",
+      "Set",
     ]
   }
 

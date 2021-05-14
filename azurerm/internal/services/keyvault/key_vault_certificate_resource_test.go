@@ -184,6 +184,52 @@ func TestAccKeyVaultCertificate_basicGenerateTags(t *testing.T) {
 	})
 }
 
+func TestAccKeyVaultCertificate_basicGenerateEllipticCurve(t *testing.T) {
+	data := acceptance.BuildTestData(t, "azurerm_key_vault_certificate", "test")
+	r := KeyVaultCertificateResource{}
+
+	data.ResourceTest(t, r, []resource.TestStep{
+		{
+			Config: r.basicGenerateEllipticCurve(data),
+			Check: resource.ComposeTestCheckFunc(
+				check.That(data.ResourceName).ExistsInAzure(r),
+				check.That(data.ResourceName).Key("secret_id").Exists(),
+				check.That(data.ResourceName).Key("certificate_data").Exists(),
+				check.That(data.ResourceName).Key("certificate_data_base64").Exists(),
+				check.That(data.ResourceName).Key("thumbprint").Exists(),
+				check.That(data.ResourceName).Key("certificate_attribute.0.created").Exists(),
+				check.That(data.ResourceName).Key("certificate_policy.0.key_properties.0.curve").HasValue("P-256K"),
+				check.That(data.ResourceName).Key("certificate_policy.0.key_properties.0.key_type").HasValue("EC"),
+				check.That(data.ResourceName).Key("certificate_policy.0.key_properties.0.key_size").HasValue("256"),
+			),
+		},
+		data.ImportStep(),
+	})
+}
+
+func TestAccKeyVaultCertificate_basicGenerateEllipticCurveAutoKeySize(t *testing.T) {
+	data := acceptance.BuildTestData(t, "azurerm_key_vault_certificate", "test")
+	r := KeyVaultCertificateResource{}
+
+	data.ResourceTest(t, r, []resource.TestStep{
+		{
+			Config: r.basicGenerateEllipticCurveAutoKeySize(data),
+			Check: resource.ComposeTestCheckFunc(
+				check.That(data.ResourceName).ExistsInAzure(r),
+				check.That(data.ResourceName).Key("secret_id").Exists(),
+				check.That(data.ResourceName).Key("certificate_data").Exists(),
+				check.That(data.ResourceName).Key("certificate_data_base64").Exists(),
+				check.That(data.ResourceName).Key("thumbprint").Exists(),
+				check.That(data.ResourceName).Key("certificate_attribute.0.created").Exists(),
+				check.That(data.ResourceName).Key("certificate_policy.0.key_properties.0.curve").HasValue("P-521"),
+				check.That(data.ResourceName).Key("certificate_policy.0.key_properties.0.key_type").HasValue("EC"),
+				check.That(data.ResourceName).Key("certificate_policy.0.key_properties.0.key_size").HasValue("521"),
+			),
+		},
+		data.ImportStep(),
+	})
+}
+
 func TestAccKeyVaultCertificate_basicExtendedKeyUsage(t *testing.T) {
 	data := acceptance.BuildTestData(t, "azurerm_key_vault_certificate", "test")
 	r := KeyVaultCertificateResource{}
@@ -240,6 +286,29 @@ func TestAccKeyVaultCertificate_withExternalAccessPolicy(t *testing.T) {
 			),
 		},
 		data.ImportStep(),
+	})
+}
+
+func TestAccKeyVaultCertificate_purge(t *testing.T) {
+	data := acceptance.BuildTestData(t, "azurerm_key_vault_certificate", "test")
+	r := KeyVaultCertificateResource{}
+
+	data.ResourceTest(t, r, []resource.TestStep{
+		{
+			Config: r.basicGenerate(data),
+			Check: resource.ComposeTestCheckFunc(
+				check.That(data.ResourceName).ExistsInAzure(r),
+				check.That(data.ResourceName).Key("secret_id").Exists(),
+				check.That(data.ResourceName).Key("certificate_data").Exists(),
+				check.That(data.ResourceName).Key("certificate_data_base64").Exists(),
+				check.That(data.ResourceName).Key("thumbprint").Exists(),
+				check.That(data.ResourceName).Key("certificate_attribute.0.created").Exists(),
+			),
+		},
+		{
+			Config:  r.basicGenerate(data),
+			Destroy: true,
+		},
 	})
 }
 
@@ -610,6 +679,109 @@ resource "azurerm_key_vault_certificate" "test" {
 `, r.template(data), data.RandomString)
 }
 
+func (r KeyVaultCertificateResource) basicGenerateEllipticCurve(data acceptance.TestData) string {
+	return fmt.Sprintf(`
+provider "azurerm" {
+  features {}
+}
+
+%s
+
+resource "azurerm_key_vault_certificate" "test" {
+  name         = "acctestcert%s"
+  key_vault_id = azurerm_key_vault.test.id
+
+  certificate_policy {
+    issuer_parameters {
+      name = "Self"
+    }
+
+    key_properties {
+      curve      = "P-256K"
+      exportable = true
+      key_size   = 256
+      key_type   = "EC"
+      reuse_key  = true
+    }
+
+    lifetime_action {
+      action {
+        action_type = "AutoRenew"
+      }
+
+      trigger {
+        days_before_expiry = 30
+      }
+    }
+
+    secret_properties {
+      content_type = "application/x-pkcs12"
+    }
+
+    x509_certificate_properties {
+      key_usage = [
+        "digitalSignature",
+      ]
+
+      subject            = "CN=hello-world"
+      validity_in_months = 12
+    }
+  }
+}
+`, r.template(data), data.RandomString)
+}
+
+func (r KeyVaultCertificateResource) basicGenerateEllipticCurveAutoKeySize(data acceptance.TestData) string {
+	return fmt.Sprintf(`
+provider "azurerm" {
+  features {}
+}
+
+%s
+
+resource "azurerm_key_vault_certificate" "test" {
+  name         = "acctestcert%s"
+  key_vault_id = azurerm_key_vault.test.id
+
+  certificate_policy {
+    issuer_parameters {
+      name = "Self"
+    }
+
+    key_properties {
+      curve      = "P-521"
+      exportable = true
+      key_type   = "EC"
+      reuse_key  = true
+    }
+
+    lifetime_action {
+      action {
+        action_type = "AutoRenew"
+      }
+
+      trigger {
+        days_before_expiry = 30
+      }
+    }
+
+    secret_properties {
+      content_type = "application/x-pkcs12"
+    }
+
+    x509_certificate_properties {
+      key_usage = [
+        "digitalSignature",
+      ]
+
+      subject            = "CN=hello-world"
+      validity_in_months = 12
+    }
+  }
+}
+`, r.template(data), data.RandomString)
+}
+
 func (r KeyVaultCertificateResource) basicExtendedKeyUsage(data acceptance.TestData) string {
 	return fmt.Sprintf(`
 provider "azurerm" {
@@ -811,7 +983,6 @@ resource "azurerm_key_vault" "test" {
   resource_group_name        = azurerm_resource_group.test.name
   tenant_id                  = data.azurerm_client_config.current.tenant_id
   sku_name                   = "standard"
-  soft_delete_enabled        = true
   soft_delete_retention_days = 7
 }
 
@@ -820,24 +991,24 @@ resource "azurerm_key_vault_access_policy" "test" {
   tenant_id    = data.azurerm_client_config.current.tenant_id
   object_id    = data.azurerm_client_config.current.object_id
   certificate_permissions = [
-    "create",
-    "delete",
-    "get",
-    "purge",
-    "recover",
-    "update",
+    "Create",
+    "Delete",
+    "Get",
+    "Purge",
+    "Recover",
+    "Update",
   ]
 
   key_permissions = [
-    "create",
+    "Create",
   ]
 
   secret_permissions = [
-    "set",
+    "Set",
   ]
 
   storage_permissions = [
-    "set",
+    "Set",
   ]
 }
 
@@ -910,7 +1081,6 @@ resource "azurerm_key_vault" "test" {
   resource_group_name        = azurerm_resource_group.test.name
   tenant_id                  = data.azurerm_client_config.current.tenant_id
   sku_name                   = "standard"
-  soft_delete_enabled        = true
   soft_delete_retention_days = 7
 }
 
@@ -919,25 +1089,25 @@ resource "azurerm_key_vault_access_policy" "test" {
   tenant_id    = data.azurerm_client_config.current.tenant_id
   object_id    = data.azurerm_client_config.current.object_id
   certificate_permissions = [
-    "backup",
-    "create",
-    "delete",
-    "get",
-    "recover",
-    "purge",
-    "update",
+    "Backup",
+    "Create",
+    "Delete",
+    "Get",
+    "Recover",
+    "Purge",
+    "Update",
   ]
 
   key_permissions = [
-    "create",
+    "Create",
   ]
 
   secret_permissions = [
-    "set",
+    "Set",
   ]
 
   storage_permissions = [
-    "set",
+    "Set",
   ]
 }
 
@@ -1005,7 +1175,6 @@ resource "azurerm_key_vault" "test" {
   resource_group_name        = azurerm_resource_group.test.name
   tenant_id                  = data.azurerm_client_config.current.tenant_id
   sku_name                   = "standard"
-  soft_delete_enabled        = true
   soft_delete_retention_days = 7
 
   access_policy {
@@ -1013,26 +1182,26 @@ resource "azurerm_key_vault" "test" {
     object_id = data.azurerm_client_config.current.object_id
 
     certificate_permissions = [
-      "create",
-      "delete",
-      "get",
-      "import",
-      "purge",
-      "recover",
-      "update",
+      "Create",
+      "Delete",
+      "Get",
+      "Import",
+      "Purge",
+      "Recover",
+      "Update",
     ]
 
     key_permissions = [
-      "create",
+      "Create",
     ]
 
     secret_permissions = [
-      "set",
-      "get",
+      "Get",
+      "Set",
     ]
 
     storage_permissions = [
-      "set",
+      "Set",
     ]
   }
 }

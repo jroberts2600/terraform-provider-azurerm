@@ -5,15 +5,15 @@ import (
 	"encoding/base64"
 	"fmt"
 	"log"
-	"strings"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/services/keyvault/2016-10-01/keyvault"
+	"github.com/Azure/azure-sdk-for-go/services/keyvault/v7.1/keyvault"
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/date"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
+
 	"github.com/terraform-providers/terraform-provider-azurerm/azurerm/helpers/tf"
 	"github.com/terraform-providers/terraform-provider-azurerm/azurerm/internal/clients"
 	"github.com/terraform-providers/terraform-provider-azurerm/azurerm/internal/services/keyvault/parse"
@@ -101,11 +101,15 @@ func resourceKeyVaultKey() *schema.Resource {
 				Optional: true,
 				Computed: true,
 				ForceNew: true,
+				DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
+					return old == "SECP256K1" && new == string(keyvault.P256K)
+				},
 				ValidateFunc: validation.StringInSlice([]string{
 					string(keyvault.P256),
+					string(keyvault.P256K),
 					string(keyvault.P384),
 					string(keyvault.P521),
-					string(keyvault.SECP256K1),
+					"SECP256K1", // TODO: remove this in v3.0 as it was renamed to keyvault.P256K
 				}, false),
 				// TODO: the curve name should probably be mandatory for EC in the future,
 				// but handle the diff so that we don't break existing configurations and
@@ -419,7 +423,7 @@ func resourceKeyVaultKeyRead(d *schema.ResourceData, meta interface{}) error {
 
 	// Computed
 	d.Set("version", id.Version)
-	d.Set("versionless_id", fmt.Sprintf("%s/%s/%s", strings.TrimSuffix(id.KeyVaultBaseUrl, "/"), id.NestedItemType, id.Name))
+	d.Set("versionless_id", id.VersionlessID())
 
 	return tags.FlattenAndSet(d, resp.Tags)
 }

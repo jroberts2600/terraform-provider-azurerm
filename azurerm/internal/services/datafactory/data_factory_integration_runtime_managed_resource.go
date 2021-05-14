@@ -12,6 +12,7 @@ import (
 	"github.com/terraform-providers/terraform-provider-azurerm/azurerm/helpers/tf"
 	"github.com/terraform-providers/terraform-provider-azurerm/azurerm/internal/clients"
 	"github.com/terraform-providers/terraform-provider-azurerm/azurerm/internal/services/datafactory/validate"
+	"github.com/terraform-providers/terraform-provider-azurerm/azurerm/internal/tf/pluginsdk"
 	"github.com/terraform-providers/terraform-provider-azurerm/azurerm/internal/timeouts"
 	"github.com/terraform-providers/terraform-provider-azurerm/azurerm/utils"
 )
@@ -22,9 +23,8 @@ func resourceDataFactoryIntegrationRuntimeManaged() *schema.Resource {
 		Read:   resourceDataFactoryIntegrationRuntimeManagedRead,
 		Update: resourceDataFactoryIntegrationRuntimeManagedCreateUpdate,
 		Delete: resourceDataFactoryIntegrationRuntimeManagedDelete,
-		Importer: &schema.ResourceImporter{
-			State: schema.ImportStatePassthrough,
-		},
+		// TODO: replace this with an importer which validates the ID during import
+		Importer: pluginsdk.DefaultImporter(),
 
 		Timeouts: &schema.ResourceTimeout{
 			Create: schema.DefaultTimeout(30 * time.Minute),
@@ -102,20 +102,20 @@ func resourceDataFactoryIntegrationRuntimeManaged() *schema.Resource {
 			"edition": {
 				Type:     schema.TypeString,
 				Optional: true,
-				Default:  string(datafactory.Standard),
+				Default:  string(datafactory.IntegrationRuntimeEditionStandard),
 				ValidateFunc: validation.StringInSlice([]string{
-					string(datafactory.Standard),
-					string(datafactory.Enterprise),
+					string(datafactory.IntegrationRuntimeEditionStandard),
+					string(datafactory.IntegrationRuntimeEditionEnterprise),
 				}, false),
 			},
 
 			"license_type": {
 				Type:     schema.TypeString,
 				Optional: true,
-				Default:  string(datafactory.LicenseIncluded),
+				Default:  string(datafactory.IntegrationRuntimeLicenseTypeLicenseIncluded),
 				ValidateFunc: validation.StringInSlice([]string{
-					string(datafactory.LicenseIncluded),
-					string(datafactory.BasePrice),
+					string(datafactory.IntegrationRuntimeLicenseTypeLicenseIncluded),
+					string(datafactory.IntegrationRuntimeLicenseTypeBasePrice),
 				}, false),
 			},
 
@@ -173,12 +173,12 @@ func resourceDataFactoryIntegrationRuntimeManaged() *schema.Resource {
 						},
 						"administrator_login": {
 							Type:         schema.TypeString,
-							Required:     true,
+							Optional:     true,
 							ValidateFunc: validation.StringIsNotEmpty,
 						},
 						"administrator_password": {
 							Type:         schema.TypeString,
-							Required:     true,
+							Optional:     true,
 							Sensitive:    true,
 							ValidateFunc: validation.StringIsNotEmpty,
 						},
@@ -225,7 +225,7 @@ func resourceDataFactoryIntegrationRuntimeManagedCreateUpdate(d *schema.Resource
 	description := d.Get("description").(string)
 	managedIntegrationRuntime := datafactory.ManagedIntegrationRuntime{
 		Description: &description,
-		Type:        datafactory.TypeManaged,
+		Type:        datafactory.TypeBasicIntegrationRuntimeTypeManaged,
 		ManagedIntegrationRuntimeTypeProperties: &datafactory.ManagedIntegrationRuntimeTypeProperties{
 			ComputeProperties: expandDataFactoryIntegrationRuntimeManagedComputeProperties(d),
 			SsisProperties:    expandDataFactoryIntegrationRuntimeManagedSsisProperties(d),
@@ -383,16 +383,20 @@ func expandDataFactoryIntegrationRuntimeManagedSsisProperties(d *schema.Resource
 	if catalogInfos, ok := d.GetOk("catalog_info"); ok && len(catalogInfos.([]interface{})) > 0 {
 		catalogInfo := catalogInfos.([]interface{})[0].(map[string]interface{})
 
-		adminPassword := &datafactory.SecureString{
-			Value: utils.String(catalogInfo["administrator_password"].(string)),
-			Type:  datafactory.TypeSecureString,
-		}
-
 		ssisProperties.CatalogInfo = &datafactory.IntegrationRuntimeSsisCatalogInfo{
 			CatalogServerEndpoint: utils.String(catalogInfo["server_endpoint"].(string)),
-			CatalogAdminUserName:  utils.String(catalogInfo["administrator_login"].(string)),
-			CatalogAdminPassword:  adminPassword,
 			CatalogPricingTier:    datafactory.IntegrationRuntimeSsisCatalogPricingTier(catalogInfo["pricing_tier"].(string)),
+		}
+
+		if adminUserName := catalogInfo["administrator_login"]; adminUserName.(string) != "" {
+			ssisProperties.CatalogInfo.CatalogAdminUserName = utils.String(adminUserName.(string))
+		}
+
+		if adminPassword := catalogInfo["administrator_password"]; adminPassword.(string) != "" {
+			ssisProperties.CatalogInfo.CatalogAdminPassword = &datafactory.SecureString{
+				Value: utils.String(adminPassword.(string)),
+				Type:  datafactory.TypeTypeSecureString,
+			}
 		}
 	}
 
@@ -401,7 +405,7 @@ func expandDataFactoryIntegrationRuntimeManagedSsisProperties(d *schema.Resource
 
 		sasToken := &datafactory.SecureString{
 			Value: utils.String(customSetupScript["sas_token"].(string)),
-			Type:  datafactory.TypeSecureString,
+			Type:  datafactory.TypeTypeSecureString,
 		}
 
 		ssisProperties.CustomSetupScriptProperties = &datafactory.IntegrationRuntimeCustomSetupScriptProperties{
@@ -432,9 +436,12 @@ func flattenDataFactoryIntegrationRuntimeManagedSsisCatalogInfo(ssisProperties *
 	}
 
 	catalogInfo := map[string]string{
-		"server_endpoint":     *ssisProperties.CatalogServerEndpoint,
-		"administrator_login": *ssisProperties.CatalogAdminUserName,
-		"pricing_tier":        string(ssisProperties.CatalogPricingTier),
+		"server_endpoint": *ssisProperties.CatalogServerEndpoint,
+		"pricing_tier":    string(ssisProperties.CatalogPricingTier),
+	}
+
+	if ssisProperties.CatalogAdminUserName != nil {
+		catalogInfo["administrator_login"] = *ssisProperties.CatalogAdminUserName
 	}
 
 	if adminPassword, ok := d.GetOk("catalog_info.0.administrator_password"); ok {

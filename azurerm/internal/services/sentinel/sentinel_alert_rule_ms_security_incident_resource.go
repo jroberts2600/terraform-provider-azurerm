@@ -13,7 +13,7 @@ import (
 	loganalyticsParse "github.com/terraform-providers/terraform-provider-azurerm/azurerm/internal/services/loganalytics/parse"
 	loganalyticsValidate "github.com/terraform-providers/terraform-provider-azurerm/azurerm/internal/services/loganalytics/validate"
 	"github.com/terraform-providers/terraform-provider-azurerm/azurerm/internal/services/sentinel/parse"
-	azSchema "github.com/terraform-providers/terraform-provider-azurerm/azurerm/internal/tf/schema"
+	"github.com/terraform-providers/terraform-provider-azurerm/azurerm/internal/tf/pluginsdk"
 	"github.com/terraform-providers/terraform-provider-azurerm/azurerm/internal/timeouts"
 	"github.com/terraform-providers/terraform-provider-azurerm/azurerm/utils"
 )
@@ -25,7 +25,7 @@ func resourceSentinelAlertRuleMsSecurityIncident() *schema.Resource {
 		Update: resourceSentinelAlertRuleMsSecurityIncidentCreateUpdate,
 		Delete: resourceSentinelAlertRuleMsSecurityIncidentDelete,
 
-		Importer: azSchema.ValidateResourceIDPriorToImportThen(func(id string) error {
+		Importer: pluginsdk.ImporterValidatingResourceIdThen(func(id string) error {
 			_, err := parse.AlertRuleID(id)
 			return err
 		}, importSentinelAlertRule(securityinsight.AlertRuleKindMicrosoftSecurityIncidentCreation)),
@@ -62,11 +62,13 @@ func resourceSentinelAlertRuleMsSecurityIncident() *schema.Resource {
 				Type:     schema.TypeString,
 				Required: true,
 				ValidateFunc: validation.StringInSlice([]string{
-					string(securityinsight.MicrosoftCloudAppSecurity),
-					string(securityinsight.AzureSecurityCenter),
-					string(securityinsight.AzureActiveDirectoryIdentityProtection),
-					string(securityinsight.AzureSecurityCenterforIoT),
-					string(securityinsight.AzureAdvancedThreatProtection),
+					string(securityinsight.MicrosoftSecurityProductNameMicrosoftCloudAppSecurity),
+					string(securityinsight.MicrosoftSecurityProductNameAzureSecurityCenter),
+					string(securityinsight.MicrosoftSecurityProductNameAzureActiveDirectoryIdentityProtection),
+					string(securityinsight.MicrosoftSecurityProductNameAzureSecurityCenterforIoT),
+					string(securityinsight.MicrosoftSecurityProductNameAzureAdvancedThreatProtection),
+					string(securityinsight.MicrosoftSecurityProductNameMicrosoftDefenderAdvancedThreatProtection),
+					string(securityinsight.MicrosoftSecurityProductNameOffice365AdvancedThreatProtection),
 				}, false),
 			},
 
@@ -77,10 +79,10 @@ func resourceSentinelAlertRuleMsSecurityIncident() *schema.Resource {
 				Elem: &schema.Schema{
 					Type: schema.TypeString,
 					ValidateFunc: validation.StringInSlice([]string{
-						string(securityinsight.High),
-						string(securityinsight.Medium),
-						string(securityinsight.Low),
-						string(securityinsight.Informational),
+						string(securityinsight.AlertSeverityHigh),
+						string(securityinsight.AlertSeverityMedium),
+						string(securityinsight.AlertSeverityLow),
+						string(securityinsight.AlertSeverityInformational),
 					}, false),
 				},
 			},
@@ -155,7 +157,7 @@ func resourceSentinelAlertRuleMsSecurityIncidentCreateUpdate(d *schema.ResourceD
 	id := parse.NewAlertRuleID(workspaceID.SubscriptionId, workspaceID.ResourceGroup, workspaceID.WorkspaceName, name)
 
 	if d.IsNewResource() {
-		resp, err := client.Get(ctx, workspaceID.ResourceGroup, "Microsoft.OperationalInsights", workspaceID.WorkspaceName, name)
+		resp, err := client.Get(ctx, workspaceID.ResourceGroup, OperationalInsightsResourceProvider, workspaceID.WorkspaceName, name)
 		if err != nil {
 			if !utils.ResponseWasNotFound(resp.Response) {
 				return fmt.Errorf("checking for existing Sentinel Alert Rule Ms Security Incident %q: %+v", id, err)
@@ -169,7 +171,7 @@ func resourceSentinelAlertRuleMsSecurityIncidentCreateUpdate(d *schema.ResourceD
 	}
 
 	param := securityinsight.MicrosoftSecurityIncidentCreationAlertRule{
-		Kind: securityinsight.KindMicrosoftSecurityIncidentCreation,
+		Kind: securityinsight.KindBasicAlertRuleKindMicrosoftSecurityIncidentCreation,
 		MicrosoftSecurityIncidentCreationAlertRuleProperties: &securityinsight.MicrosoftSecurityIncidentCreationAlertRuleProperties{
 			ProductFilter:    securityinsight.MicrosoftSecurityProductName(d.Get("product_filter").(string)),
 			DisplayName:      utils.String(d.Get("display_name").(string)),
@@ -195,7 +197,7 @@ func resourceSentinelAlertRuleMsSecurityIncidentCreateUpdate(d *schema.ResourceD
 
 	// Service avoid concurrent update of this resource via checking the "etag" to guarantee it is the same value as last Read.
 	if !d.IsNewResource() {
-		resp, err := client.Get(ctx, workspaceID.ResourceGroup, "Microsoft.OperationalInsights", workspaceID.WorkspaceName, name)
+		resp, err := client.Get(ctx, workspaceID.ResourceGroup, OperationalInsightsResourceProvider, workspaceID.WorkspaceName, name)
 		if err != nil {
 			return fmt.Errorf("retrieving Sentinel Alert Rule Ms Security Incident %q: %+v", id, err)
 		}
@@ -206,7 +208,7 @@ func resourceSentinelAlertRuleMsSecurityIncidentCreateUpdate(d *schema.ResourceD
 		param.Etag = resp.Value.(securityinsight.MicrosoftSecurityIncidentCreationAlertRule).Etag
 	}
 
-	if _, err := client.CreateOrUpdate(ctx, workspaceID.ResourceGroup, "Microsoft.OperationalInsights", workspaceID.WorkspaceName, name, param); err != nil {
+	if _, err := client.CreateOrUpdate(ctx, workspaceID.ResourceGroup, OperationalInsightsResourceProvider, workspaceID.WorkspaceName, name, param); err != nil {
 		return fmt.Errorf("creating Sentinel Alert Rule Ms Security Incident %q: %+v", id, err)
 	}
 
@@ -225,7 +227,7 @@ func resourceSentinelAlertRuleMsSecurityIncidentRead(d *schema.ResourceData, met
 		return err
 	}
 
-	resp, err := client.Get(ctx, id.ResourceGroup, "Microsoft.OperationalInsights", id.WorkspaceName, id.Name)
+	resp, err := client.Get(ctx, id.ResourceGroup, OperationalInsightsResourceProvider, id.WorkspaceName, id.Name)
 	if err != nil {
 		if utils.ResponseWasNotFound(resp.Response) {
 			log.Printf("[DEBUG] Sentinel Alert Rule Ms Security Incident %q was not found - removing from state!", id)
@@ -279,7 +281,7 @@ func resourceSentinelAlertRuleMsSecurityIncidentDelete(d *schema.ResourceData, m
 		return err
 	}
 
-	if _, err := client.Delete(ctx, id.ResourceGroup, "Microsoft.OperationalInsights", id.WorkspaceName, id.Name); err != nil {
+	if _, err := client.Delete(ctx, id.ResourceGroup, OperationalInsightsResourceProvider, id.WorkspaceName, id.Name); err != nil {
 		return fmt.Errorf("deleting Sentinel Alert Rule Ms Security Incident %q: %+v", id, err)
 	}
 
